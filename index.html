@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <link rel="manifest" href="/manifest.json">
+  <title>Kel</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 24px;
+      background: #0b1220; color: #e8eefc; font-family: system-ui, sans-serif;
+    }
+    h1 { margin: 0; font-weight: 600; letter-spacing: 4px; }
+    #listen {
+      width: 160px; height: 160px; border-radius: 50%; border: none;
+      background: #2563eb; color: white; font-size: 18px; cursor: pointer;
+    }
+    #listen.on { background: #dc2626; }
+    #status { min-height: 24px; opacity: 0.8; }
+    #log { width: min(92vw, 560px); max-height: 40vh; overflow-y: auto; }
+    .you { color: #93c5fd; margin: 8px 0; }
+    .kel { color: #e8eefc; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <h1>KEL</h1>
+  <button id="listen">Tap to talk</button>
+  <div id="status">Ready</div>
+  <div id="log"></div>
+
+  <script>
+    const btn = document.getElementById('listen');
+    const statusEl = document.getElementById('status');
+    const log = document.getElementById('log');
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+
+    function add(cls, text) {
+      const p = document.createElement('p');
+      p.className = cls; p.textContent = text;
+      log.appendChild(p); log.scrollTop = log.scrollHeight;
+    }
+
+    function speak(text) {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.onend = () => { statusEl.textContent = 'Ready'; };
+      statusEl.textContent = 'Speaking';
+      speechSynthesis.speak(u);
+    }
+
+    async function ask(message) {
+      statusEl.textContent = 'Thinking';
+      try {
+        const res = await fetch('/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        const data = await res.json();
+        const reply = data.reply || data.error || 'No answer.';
+        add('kel', reply);
+        speak(reply);
+      } catch (e) {
+        add('kel', 'I could not reach the server.');
+        statusEl.textContent = 'Ready';
+      }
+    }
+
+    if (!Rec) {
+      btn.disabled = true;
+      statusEl.textContent = 'This browser cannot listen. Use Chrome.';
+    } else {
+      const rec = new Rec();
+      rec.lang = 'en-US';
+      rec.interimResults = false;
+      rec.onstart = () => { btn.classList.add('on'); btn.textContent = 'Listening'; statusEl.textContent = 'Listening'; };
+      rec.onend = () => { btn.classList.remove('on'); btn.textContent = 'Tap to talk'; };
+      rec.onerror = (e) => { statusEl.textContent = 'Mic problem: ' + e.error; };
+      rec.onresult = (e) => {
+        const said = e.results[0][0].transcript;
+        add('you', said);
+        ask(said);
+      };
+      btn.addEventListener('click', () => {
+        speechSynthesis.cancel();
+        try { rec.start(); } catch (e) { rec.stop(); }
+      });
+    }
+  </script>
+</body>
+</html>
